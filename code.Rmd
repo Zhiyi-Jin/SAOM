@@ -1,0 +1,613 @@
+---
+title: "Final Project"
+author: "Zhiyi Jin"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, message = F, warning = F, error = T)
+
+# library
+library(tidyverse)
+library(igraph)
+library(sna)
+library(knitr)
+library(RSiena)
+```
+
+
+### Theoretical background
+
+This project aims to examine the formation of an emotional support network and its co-evolution of pupils’ delinquent behavior in school classes. Research on social networks has studied many factors that can influence social support peers. Peer relationship is believed to play an important role in facilitating adolescents to develop necessary social skills as a basis of adult friendship. Adolescent builds their friendship based on support essential to hold out against emotionally challenging situations (Stanton-Salazar & Spina, 2005). Thus, I’ll, firstly, test the effect of pupils’ perception of the importance of friends on the formation of an emotional support network. Secondly, previous research has suggested the association between ethnic identity and friendship homophily. Specifically, the preference for same-ethnic friendship is driven by the individual perception of a more familiar and certain interaction with same-ethnic peers (Smith et al., 2016). Emotional support relations, as a stronger definition of normal friendship, may follow this mechanism. Therefore, the effect of ethnic homophily on emotional support networks will be examined as well. 
+
+As for the co-evolution of pupils’ delinquent behavior and emotional support network, the question is about whether delinquents have the necessary social abilities to develop strong interpersonal bonds with peers. According to the “social inability model” (Hirschi, 1969), delinquents are believed to commit offenses because they lack close bonds with parents and other parties at school. They are not capable of building strong bonds, lack essential social controls then generate delinquent behavior. Pabon et al., (1992) also confirm the association between participation in delinquent behavior and the absence of emotional connections with peers. Thus, the fourth and fifth hypotheses assume that pupils with more delinquent behavior receive and give less emotional support to others. A competing theory to this is the “social ability model” based on the differential association theory (Sutherland & Cressey, 1974). In this theory, adolescents learn delinquent behavior through social interaction with a close group of friends. In other words, the generation of delinquent behavior is not from social inability, instead, it’s exactly from a socialization process. Therefore, pupils with more delinquent behavior could involve more social interaction such as receiving and giving more emotional support. To test these two competing models, I assume that one of my data sets will have the results of the social inability model, while the other data set will show the effects of the social ability model.   
+
+
+### Hypotheses
+
+The first three hypotheses are based on the theoretical discussion about the tie formation of an emotional support network.
+
+* H1: The more you value school friends, the more emotional support you will be received. 
++ Mechanism: Actors with high scores on the importance of school friends are likely to attract more incoming emotional support ties than actors with low scores.
+
+* H2: The more you value school friends, the more emotional support you will give.
++ Mechanism: Actors with high scores on the importance of school friends are likely to have more outgoing emotional support ties than actors with low scores.
+
+* H3: People seek emotional support from their own ethnic group.
++ Mechanism: Having the same ethnic background between two actors increases the likelihood that an emotional support tie is present between these actors.
+
+The following hypotheses are formulated to examine the changes in delinquent behavior and emotional support network. Based on two competing theories, there are opposite assumptions for the two networks. H4a and H5a are expected for the network of School 7 (see Data description section). H4b and H5b are expected for the network of School 21.
+
+* H4a: Actors with more delinquent behavior receive less emotional support.
++ Mechanism: negative receiver effect. 
++ Conjugate mechanism: Less indegree of emotional support increases the delinquent behavior.
+
+* H4b: Actors with more delinquent behavior receive more emotional support.
++ Mechanism: positive receiver effect. 
++ Conjugate mechanism: More indegree of emotional support increases the delinquent behavior.
+
+* H5a: Actors with more delinquent behavior give less emotional support.
++ Mechanism: negative sender effect. 
++ Conjugate mechanism: High outdegree of emotional reduces delinquent behavior.
+
+* H5b: Actors with more delinquent behavior give more emotional support.
++ Mechanism: positive sender effect. 
++ Conjugate mechanism: High outdegree of emotional increases delinquent behavior.
+
+
+```{r data, include=FALSE}
+rm(list=ls())
+setwd('')
+
+# prepare the data
+## network data
+# School 7, wave 1 and wave 2
+s7_1 <- read.csv('N34_7.DAT', header = FALSE, sep = "")
+s7_2 <- read.csv('HN34_7.DAT', header = FALSE, sep = "")
+m7.1 <- data.matrix(s7_1)
+m7.2 <- data.matrix(s7_2)  
+
+# School 21, wave 1 and wave 2
+s21_1 <- read.csv('N34_21.DAT', header = FALSE, sep = "")
+s21_2 <- read.csv('HN34_21.DAT', header = FALSE, sep = "")
+m21.1 <- data.matrix(s21_1)
+m21.2 <- data.matrix(s21_2)
+
+## actor attributes data
+# School 7
+dt7_1 <- read.csv('CBE7.DAT', header = FALSE, sep = "")
+# gender (1 girls, 2 boys)
+# importance of school friends (transformed, from 4=very important to 1=unimportant).
+dt7_1 <- dt7_1 %>% 
+  select(V1, V3) %>% 
+  rename("gender" = V1, "imp_fri" = V3) %>% 
+  mutate(gender = as.factor(gender), 
+         imp_fri = 5 - imp_fri) 
+
+# delinquent behavior (by ln(1+x), rounded to integer)
+dt7_2 <- read.csv('cbc7.dat', header = FALSE, sep = "") 
+m7_2 <- data.matrix(dt7_2)
+
+# Dyadic covariate: ethnic background
+dt7_3 <- read.csv('cbe7.sim', header = FALSE, sep = "")
+m7_3 <- data.matrix(dt7_3)
+
+# School 21
+dt21_1 <- read.csv('CBE21.DAT', header = FALSE, sep = "")
+dt21_1 <- dt21_1 %>% 
+  select(V1, V3) %>% 
+  rename("gender" = V1, "imp_fri" = V3) %>% 
+  mutate(gender = as.factor(gender), 
+         imp_fri = 5 - imp_fri)
+dt21_2 <- read.csv('cbc21.dat', header = FALSE, sep = "")
+dt21_3 <- read.csv('cbe21.sim', header = FALSE, sep = "")
+m21_2 <- data.matrix(dt21_2)
+m21_3 <- data.matrix(dt21_3)
+
+## Add attributes to the network
+g7.1 <- graph.adjacency(m7.1)
+g7.2 <- graph.adjacency(m7.2)
+V(g7.1)$gender <- dt7_1$gender
+V(g7.2)$gender <- dt7_1$gender
+V(g7.1)$imp <- dt7_1$imp_fri
+V(g7.2)$imp <- dt7_1$imp_fri
+V(g7.1)$del <- dt7_2$V1
+V(g7.2)$del <- dt7_2$V2
+
+g21.1 <- graph.adjacency(m21.1)
+g21.2 <- graph.adjacency(m21.2)
+V(g21.1)$gender <- dt21_1$gender
+V(g21.2)$gender <- dt21_1$gender
+V(g21.1)$imp <- dt21_1$imp_fri
+V(g21.2)$imp <- dt21_1$imp_fri
+V(g21.1)$del <- dt21_2$V1
+V(g21.2)$del <- dt21_2$V2
+
+```
+
+
+
+```{r description}
+# Descriptive statistics
+## School 7
+# density
+d7.1 <- gden(m7.1)
+d7.2 <- gden(m7.1)
+
+# reciprocity
+r7.1 <- reciprocity(g7.1)
+r7.2 <- reciprocity(g7.2)
+
+# transitivity
+t7.1 <- gtrans(m7.1, measure = "weak")
+t7.2 <- gtrans(m7.2, measure = "weak")
+
+# degree
+ave_deg7.1 <- mean(sna::degree(m7.1))
+out7.1 <- sna::degree(m7.1, cmode = "outdegree")
+in7.1 <- sna::degree(m7.1, cmode = "indegree")
+ave_out7.1 <- mean(out7.1)
+ave_in7.1 <- mean(in7.1)
+
+ave_deg7.2 <- mean(sna::degree(m7.2))
+out7.2 <- sna::degree(m7.2, cmode = "outdegree")
+in7.2 <- sna::degree(m7.2, cmode = "indegree")
+ave_out7.2 <- mean(out7.2)
+ave_in7.2 <- mean(in7.2)
+
+# assotativity
+## degree homophily
+a7.1 <- assortativity.degree(g7.1)
+a7.2 <- assortativity.degree(g7.2)
+## gender homophily
+ag7.1 <- assortativity.nominal(g7.1, V(g7.1)$gender)
+ag7.2 <- assortativity.nominal(g7.2, V(g7.2)$gender)
+
+
+## School 21
+# density
+d21.1 <- gden(m21.1)
+d21.2 <- gden(m21.1)
+
+# reciprocity
+r21.1 <- reciprocity(g21.1)
+r21.2 <- reciprocity(g21.2)
+
+# transitivity
+t21.1 <- gtrans(m21.1, measure = "weak")
+t21.2 <- gtrans(m21.2, measure = "weak")
+
+# degree
+ave_deg21.1 <- mean(sna::degree(m21.1))
+out21.1 <- sna::degree(m21.1, cmode = "outdegree")
+in21.1 <- sna::degree(m21.1, cmode = "indegree")
+ave_out21.1 <- mean(out21.1)
+ave_in21.1 <- mean(in21.1)
+
+ave_deg21.2 <- mean(sna::degree(m21.2))
+out21.2 <- sna::degree(m21.2, cmode = "outdegree")
+in21.2 <- sna::degree(m21.2, cmode = "indegree")
+ave_out21.2 <- mean(out21.2)
+ave_in21.2 <- mean(in21.2)
+
+# assotativity
+## degree homophily
+a21.1 <- assortativity.degree(g21.1)
+a21.2 <- assortativity.degree(g21.2)
+## gender homophily
+ag21.1 <- assortativity.nominal(g21.1, V(g21.1)$gender)
+ag21.2 <- assortativity.nominal(g21.2, V(g21.2)$gender)
+```
+
+### Data description
+
+This section is a quantitative overview of pupils’ emotional support networks. Data were derived from the Dutch Social Behavior study, a two-wave survey in classrooms (Houtzager and Baerveldt, 1999). The data files include 19 schools. For the purpose of this project, two schools(data sets) with similar sample sizes are selected. Pupils in School 7 (N = 54) and School 21 (N = 53) completed the survey in their 3rd, and about one year later, 4th years. Each school is treated as one network, thus there are four networks in total for two waves.
+
+Table 1 displays the relevant descriptive statistics of the four networks: School 7 wave 1, School 7 wave 2, School 21 wave 1, and School 21 wave 2. Peer relation in these networks is defined as giving and receiving emotional support. It can be seen that the networks of the two schools are quite sparse with a similarly low level of density.  Pupils in School 7 are more mutually connected than School 21 at Wave 1. The level of reciprocity decreased to 56% in the network of School 7 at Wave 2, while increasing to 59% in the network of School 21 at Wave 2. The network of School 21 has a higher level of transitivity than the one of School 7, in which over 40% of connected triples close to form triangles at both waves. Four networks have a relatively high level of gender homophily. There is a strong tendency for emotional support between pupils of the same gender. 
+
+```{r table1}
+### make a table
+col <- c("Average Degree", "Density", "Reciprocity", "Transitivity", "Degree Homophily", "Gender Homophily")
+w1 <- c(ave_deg7.1, d7.1, r7.1, t7.1, a7.1, ag7.1)
+w2 <- c(ave_deg7.2, d7.2, r7.2, t7.2, a7.2, ag7.2)
+g1 <- c(ave_deg21.1, d21.1, r21.1, t21.1, a21.1, ag21.1)
+g2 <- c(ave_deg21.2, d21.2, r21.2, t21.2, a21.2, ag21.2)
+dt <- data.frame(col, w1, w2, g1, g2)
+
+dt %>% rename("Statistics"=col, "School 7 Wave 1"=w1, "School 7 Wave 2"=w2,
+              "School 21 wave 1"=g1, "School 21 wave 2"=g2) %>% 
+  kable(align = "lcccc", caption = "Table 1 Descriptive Statistics", digits = 2)
+
+```
+
+In terms of the degree distribution, the network of School 7 has more edges than the one of School 21 at both waves on average. Note from Figure 1 that the degree distribution of the School 21 network is more right-skewed than the network of School 7. Pupils with a similar number of emotional supports are more likely to support each other emotionally in the School 21 network, as its degree homophily is around 20%. For both schools, the average degrees increase from the first to the second wave. Overall, the two schools have similar network structures with more reciprocal ties in School 7 while more triples in School 21. 
+
+```{r fig1}
+## degree distribution
+# School 7
+par(mfrow=c(2,2))
+hist(out7.1, xlim=c(0,12), ylim=c(0,25), main="School 7 wave 1", xlab="Outdegree", col="blue")
+hist(in7.1, xlim=c(0,12), ylim=c(0,25), main="School 7 wave 1", xlab="Indegree", col="red")
+hist(out7.2, xlim=c(0,12), ylim=c(0,25), main="School 7 wave 2", xlab="Outdegree", col="blue")
+hist(in7.2, xlim=c(0,12), ylim=c(0,25), main="School 7 wave 2", xlab="Indegree", col="red")
+par(mfrow=c(1,1))
+
+# School 21
+par(mfrow=c(2,2))
+hist(out21.1, xlim=c(0,12), ylim=c(0,25), main="School 21 wave 1", xlab="Outdegree", col="blue")
+hist(in21.1, xlim=c(0,12), ylim=c(0,25), main="School 21 wave 1", xlab="Indegree", col="red")
+hist(out21.2, xlim=c(0,12), ylim=c(0,25), main="School 21 wave 2", xlab="Outdegree", col="blue")
+hist(in21.2, xlim=c(0,12), ylim=c(0,25), main="School 21 wave 2", xlab="Indegree", col="red")
+par(mfrow=c(1,1))
+```
+
+
+Figure 2 display the networks of both schools at two observation points. Gender is captured by different colors. The level of delinquent behavior is represented by the different node sizes. The number of observed relation changes over two observations is 125 in School 7 and 100 in School 21. The Jaccard index is 0.37 and 0.32, indicating the stability of both school networks.
+
+The attributes of school variables are as follows. The proportion of girls in School 7 and School 21 is around 63% and 50% respectively. The average importance of school friends, on the scale ranging from 1(unimportant) to 4 (very important) is 3.1 in School 7 and 2.9 in School 21. The number of delinquent behavior ranges from 0 to 4 with a mean of 1.5 in School 7 and 1.9 in School 21 at wave 1. In the second observation, the number decreased to 1.3 in School 7 while increasing to 2.1 in School 21.  
+
+```{r fig2}
+## School 7
+par(mfrow=c(1,2))
+plot(g7.1, main = "School 7 wave 1", vertex.label = "",
+     edge.arrow.size = .2, edge.color = "black", edge.width = 1,
+     vertex.color = V(g7.1)$gender, vertex.size = (V(g7.1)$del+2)^1.7,
+     layout = layout_with_fr(g7.1))
+plot(g7.1, main = "School 7 wave 2", vertex.label = "",
+     edge.arrow.size = .2, edge.color = "black", edge.width = 1,
+     vertex.color = V(g7.2)$gender, vertex.size = (V(g7.2)$del+2)^1.7,
+     layout = layout_with_fr(g7.2))
+
+## School 21
+plot(g21.1, main = "School 21 wave 1", vertex.label = "",
+     edge.arrow.size = .2, edge.color = "black", edge.width = 1,
+     vertex.color = V(g21.1)$gender, vertex.size = (V(g21.1)$del+2)^1.7,
+     layout = layout_with_fr(g21.1))
+plot(g21.1, main = "School 21 wave 2", vertex.label = "",
+     edge.arrow.size = .2, edge.color = "black", edge.width = 1,
+     vertex.color = V(g21.2)$gender, vertex.size = (V(g21.2)$del+2)^1.7,
+     layout = layout_with_fr(g21.2))
+par(mfrow=c(1,1))
+```
+
+
+```{r hamming, include=FALSE}
+# insect the network change
+table(m7.1, m7.2, useNA = "always")
+table(m21.1, m21.2, useNA = "always")
+
+# Hamming distance & Jaccard indices
+Hamming <- function(changetable) {
+  return(changetable[2,1] + changetable[1,2])
+}
+
+Jaccard <- function(changetable) {
+  return(changetable[2,2]/(changetable[1,2] + changetable[2,1] + changetable
+                           [2,2]))
+}
+
+# school 7
+Hamming(table(m7.1, m7.2))
+Jaccard((table(m7.1, m7.2))) 
+# school 21
+Hamming(table(m21.1, m21.2))
+Jaccard((table(m21.1, m21.2))) 
+```
+
+```{r attributes, include=FALSE}
+## Actor attributes
+# School 7
+table(V(g7.1)$gender)
+# importatnce of school friends
+table(V(g7.1)$imp)
+# deliquent behavior
+# wave 1
+table(dt7_2$V1)
+# wave 2
+table(dt7_2$V2)
+
+
+# School 21
+table(V(g21.1)$gender)
+table(V(g21.1)$imp)
+table(dt21_2$V1)
+table(dt21_2$V2)
+```
+
+
+
+
+### Operationalization 
+
+In SAOM, the baseline models of both school networks ( referred to as Model 1) include structure effects of density, reciprocity, triadic closure (i.e. GWESP FF). Following this, the main effect of actors attributes such as the importance of school friends and delinquent behavior on the likelihood of nominating or being nominated as an emotional supporter are presented for tests of H1 and H2. The ethnic similarity is also included to captures the degree to which individuals choose others of the same ethnic background as an emotional supporter for H3. The effects of gender-related similarity are considered as an actor-dependent covariate. Finally, for H4 and H5, the effect of indegree and outdegree on the level of delinquent behavior are introduced into the model. Model 2 was identical with Model 1 in terms of the main effects of the hypotheses except that it controls more structural effects such as outdegree popularity, outdegree activity, and the interaction between reciprocity and GWESP FF to improve the goodness of fit of degree distribution and triad census. 
+
+Note that in Model 1, the simulated network of School 7 has an inferior fit to the triadic properties of the observed network with too few triads of 021D, 030T, and 120C, while School 21 has a rather good fit (see Appendix Figure 3 and Figure 5). In Model 2,  the inclusion of reciprocity x GWESP substantially improved the fit of the model to the School 7 data, especially for triads with cyclic structure and mutual ties (i.e. 030T and 120C). In order to compare the results, Model 2 is also implemented on School 21 data, although its simulated data already had a good fit to the observations in Model 1. 
+
+
+```{r model1_school7, include=FALSE}
+# operationalize hypotheses
+## prepare variables
+## School 7
+# dependent network
+emo_net <- sienaDependent(array(c(m7.1, m7.2), dim = c(54, 54, 2)))
+# predictor network(constant)
+ethnic <- coDyadCovar(m7_3)
+# predictor actor attributes(constant)
+imp_fri <- coCovar(dt7_1$imp_fri)
+# control variable
+sex <- coCovar(as.integer(dt7_1$gender))
+# dependent actor attributes(changing)
+del_beh <- sienaDependent(m7_2, type = "behavior")
+
+# the data
+netDynamics <- sienaDataCreate(emo_net, ethnic, imp_fri, del_beh, sex)
+
+## model specification
+m1 <- getEffects(netDynamics)
+## ADD EFFECTS TO NETWORK OBJECTIVE FUNCTION:
+# ethnic effect
+m1 <- includeEffects(m1, X, interaction1 = "ethnic", name = "emo_net") 
+# sender, receiver and homophily effects related to values on the importance of friends
+m1 <- includeEffects(m1, egoX, altX, simX, interaction1 = "imp_fri", name = "emo_net")
+# effect for transitive closure
+m1 <- includeEffects(m1, gwespFF, name = "emo_net")
+# gender covariate
+m1 <- includeEffects(m1, name = "emo_net", egoX, altX, simX, interaction1 = "sex")
+# sender, receiver and homophily effects related to delinquent behavior
+m1 <- includeEffects(m1, egoX, altX, simX, interaction1 = "del_beh", name = "emo_net")
+## ADD EFFECTS TO BEHAVIOUR OBJECTIVE FUNCTION:
+m1 <- includeEffects(m1, name = "del_beh", indeg, outdeg, avSim, interaction1 = "emo_net")
+
+## estimation
+c <- sienaAlgorithmCreate()
+r1 <- siena07(c, data = netDynamics, effects = m1,
+              batch = FALSE,verbose = FALSE,
+              returnDeps = TRUE)
+
+```
+
+
+```{r model1_school21,include=FALSE}
+## School 21
+## variables
+# dependent network
+emo_net2 <- sienaDependent(array(c(m21.1, m21.2), dim = c(53, 53, 2)))
+# predictor network(constant)
+ethnic2 <- coDyadCovar(m21_3)
+# predictor actor attributes
+imp_fri2 <- coCovar(dt21_1$imp_fri)
+# covariate
+sex2 <- coCovar(as.integer(dt21_1$gender))
+# dependent actor attributes
+del_beh2 <- sienaDependent(m21_2, type = "behavior")
+
+# the data
+netDynamics2 <- sienaDataCreate(emo_net2, ethnic2, imp_fri2, del_beh2, sex2)
+
+## model specification
+n1 <- getEffects(netDynamics2)
+## ADD EFFECTS TO NETWORK OBJECTIVE FUNCTION:
+# ethnic effect
+n1 <- includeEffects(n1, name = "emo_net2", X, interaction1 = "ethnic2") 
+# sender, receiver and homophily effects related to values on the importance of friends
+n1 <- includeEffects(n1, egoX, altX, simX, interaction1 = "imp_fri2", name = "emo_net2")
+# sender, receiver and homophily effects related to gender
+n1 <- includeEffects(n1, egoX, altX, simX, interaction1 = "sex2", name = "emo_net2")
+# effect for transitive closure
+n1 <- includeEffects(n1, gwespFF, name = "emo_net2")
+# sender, receiver and homophily effects related to delinquent behavior
+n1 <- includeEffects(n1, egoX, altX, simX, interaction1 = "del_beh2", name = "emo_net2")
+## ADD EFFECTS TO BEHAVIOUR OBJECTIVE FUNCTION:
+n1 <- includeEffects(n1, name = "del_beh2", indeg, outdeg, avSim, interaction1 = "emo_net2")
+
+## estimation
+c2 <- sienaAlgorithmCreate()
+h1 <- siena07(c2, data = netDynamics2, effects = n1,
+              batch = FALSE,verbose = FALSE,
+              returnDeps = TRUE)
+```
+
+
+#### Results
+
+Table 2 shows the result of parameter estimation for School 7 in Model 1. The first four parameters show general network dynamics. The rate of change in the emotional support network captured by the `basic rate parameter` is positive, representing that there were some changes in the networks. The coefficient of `outdegree` is negative. It means that emotionally supported relationship is sparse, and pupils do not emotionally connect with many peers. The effect of `reciprocity` is significant and positive, indicating that the emotionally supported relationship tends to be mutual. The coefficient for `GWESP FF` captures the tendency of transitive closure. 
+
+The next three parameters capture the main effect of pupils’ characteristics. The coefficient of `imp_fri alter` is negative and significant (p<0.05), indicating that pupils with high scores on the importance of school friends have fewer incoming ties, which rejects the H1. The coefficient of `imp_fri ego` is positive and significant (p<0.05), indicating that pupils with high scores on the importance of school friends give more outgoing ties, which confirms the H2. The coefficient of `ethnic` is slightly negative but not significant, illustrating that pupils’ ethnic similarity is not relevant in the formation of emotional support networks. Thus, H3 cannot be supported. However, the effect of `sex similarity` is positive and strongly significant (p<0.005), indicating the fact that pupils prefer emotional support from same-sex peers. 
+
+Finally, the degree to which delinquents give and receive emotional support is estimated by the coefficient of `del_beh alter` and `del_beh ego`, none of which are significant. H4a and H5a can not be supported. Delinquent behavior may not have any main effect on giving or receiving emotional support. In addition, the `rate del_beh` parameter is positive, indicating that there was a change in delinquent behavior over the two observations. Both coefficients of `del_beh indegree` and `del_beh outdegree` are negative, indicating that low incoming and outgoing ties of emotional support increase the likelihood of delinquent behavior. However, the coefficients are not significant. The expectation of conjugate mechanisms of H4a and H5a can not be supported. The result of Model 2 (see Appendix Table 3) is similar with only tiny changes in the coefficient. Therefore, the social inability model can not be confirmed in this data set. 
+
+
+```{r table2}
+# table 2
+# model 1 school 7
+# estimated result
+parameter <- r1$effects$effectName
+estimate <- r1$theta
+st.error <- sqrt(diag(r1$covtheta))
+normal.variate <- estimate/st.error
+p.value.2sided <- 2*pnorm(abs(normal.variate),lower.tail = FALSE)
+results.table <- data.frame(parameter,
+                            estimate = round(estimate,3),
+                            st.error = round(st.error,3),
+                            normal.variate = round(normal.variate,2),
+                            p.value = round(p.value.2sided,4))
+results.table %>% 
+  kable(caption = "Table 2. Results of SIENA analysis of School 7 network (Model 1)", digits = 4)
+```
+
+Table 4 displays the result of parameter estimation for School 21 in Model 1. The effect of ethnic similarity is not significant, which reaches the same conclusion as School 7 does. There is no evidence for ethnic homophily in these emotional support networks. Different from School 7, both coefficients of `imp_fri2 alter` and `imp_fri2 ego` are insignificant, indicating that the importance of school friends can not affect the indegree or outdegree of the emotional support network. H1 and H2 in the School 21 dataset can not be confirmed. None of the coefficients of delinquent behavior are significant, leading to the same result with School 7 data. Thus, H4b and H5b can’t be supported. There is no evidence of the social ability model in School 21 data. The coefficient of `del_beh2 indegree` is positive, representing that high incoming ties of emotional support increase the likelihood of delinquent behavior. This is in line with the conjugate mechanisms of H4b. However, this effect is not statistically significant. The coefficients of `del_beh2 outdegree` are negative, indicating that outgoing ties of emotional support increase the likelihood of delinquent behavior. This is not in line with the conjugate mechanisms of H5b, and the effect is not statistically significant. 
+
+```{r table4}
+## Model 1 School 21
+## estimated result
+parameter <- h1$effects$effectName
+estimate <- h1$theta
+st.error <- sqrt(diag(h1$covtheta))
+normal.variate <- estimate/st.error
+p.value.2sided <- 2*pnorm(abs(normal.variate),lower.tail = FALSE)
+results.table3 <- data.frame(parameter,
+                            estimate = round(estimate,3),
+                            st.error = round(st.error,3),
+                            normal.variate = round(normal.variate,2),
+                            p.value = round(p.value.2sided,4))
+results.table3 %>% 
+  kable(caption = "Table 4. Results of SIENA analysis of School 21 network (Model 1)", digits = 4)
+```
+
+
+
+### Discussions
+
+Pupils’ characteristics such as ethnicity, the stated importance of school friends, and delinquent behavior could have no effect on the emotional support network. It’s found that being of the same ethnicity can not make pupils have more emotional connections. The level of delinquent behavior can not be a sign of pupils’ social ability. Whether pupils give or receive emotional support from others may not be associated with their delinquent behavior. Neither the social ability model nor the social inability theory of delinquents can be supported. Moreover, high scores on the importance of school friends are not relevant to the receptions of more emotional support from peers. However, it is important to note that pupils with high scores on the importance of school friends in School 7 tend to receive less but give more emotional support to others. 
+
+The first limitation of this project is the goodness of fit of simulated School 7 data in Model 2. There are still too few 021D in the simulated data even after the modification of Model 1. Further improvements are needed. The second limitation could be the external validity of the results. The two selected schools in this project share a very similar network structure. There seems to be a general phenomenon in both two networks, although the occurrence of tie formation seems to depend on the school or network context. It could be a task for future work to apply more representative samples and examine what school or network characteristics affect social ability with respect to delinquent students. While these limitations do not invalidate the answers for this simple project, they could be, in general, important concerns for future network projects.
+
+			
+### References	
+[1] Hirschi, T. (1969). Causes of Delinquency. Berkeley: University of California Press.
+
+[2] Pabon, E., Rodriguez, O., & Gurin, G. (1992). Clarifying peer relations and delinquency.*Youth & society*, 24(2), 149-165.
+
+[3] Smith, S., Van Tubergen, F., Maas, I., & McFarland, D. A. (2016). Ethnic composition and friendship segregation: differential effects for adolescent natives and immigrants. *American Journal of Sociology*, 121(4), 1223-1272.
+
+[4] Stanton-Salazar, R. D., & Spina, S. U. (2005). Adolescent peer networks as a context for social and emotional support. *Youth & Society*, 36(4), 379-417.
+
+[5] Sutherland, E. H., & Cressey, D. R. (1974). Criminology (9th ed.). Philadelphia: Lippincott. 
+
+
+### Appendix
+
+#### Figure 3. Goodness-of-fit diagnostic plot with Model 1 for School 7
+```{r model1_school7_fit,include=FALSE}
+## assessing model fit
+# indegree
+gof1.indegrees <- sienaGOF(r1, IndegreeDistribution,
+                           varName = "emo_net",cumulative = FALSE)
+# outdegree
+gof1.outdegrees <- sienaGOF(r1, OutdegreeDistribution,
+                            varName = "emo_net",cumulative = FALSE)
+# traid
+gof1.triads <- sienaGOF(r1, TriadCensus,varName = "emo_net")
+
+# geodesic distribution
+GeodesicDistribution <- function(i, data, sims, period, groupName,
+                                 varName, levls = c(1:5,Inf), cumulative= TRUE, ...) {
+  x <- networkExtraction(i, data, sims, period, groupName, varName)
+  require(sna)
+  a <- sna::geodist(symmetrize(x))$gdist
+  if (cumulative)
+  {
+    gdi <- sapply(levls, function(i){ sum(a <= i) })
+  }
+  else
+  {
+    gdi <- sapply(levls, function(i){ sum(a == i) })
+  }
+  names(gdi) <- as.character(levls)
+  return(gdi)
+}
+gof1.geodesic <- sienaGOF(r1, GeodesicDistribution,
+                          varName = "emo_net",cumulative = FALSE)
+
+```
+
+```{r model1_school7_fit_plot}
+plot(gof1.indegrees) 
+plot(gof1.outdegrees)
+plot(gof1.triads, center = TRUE, scale = TRUE) 
+plot(gof1.geodesic) 
+```
+
+#### Table 3. Results of SIENA analysis of School 7 network (Model 2)
+```{r model2_school7,include=FALSE}
+## improve the model 1
+## model 2 school 7
+m2 <- includeEffects(m1, inPopSqrt, outPopSqrt, outAct, inAct, name = "emo_net")
+m2 <- includeInteraction(m1, gwespFF, recip)
+
+r2 <- siena07(c, data = netDynamics, effects = m2,
+              batch = FALSE,verbose = FALSE,
+              returnDeps = TRUE,
+              prevAns = m1) 
+```
+
+```{r table3}
+## Model 2 School 7
+## estimated result
+parameter <- r2$effects$effectName
+estimate <- r2$theta
+st.error <- sqrt(diag(r2$covtheta))
+normal.variate <- estimate/st.error
+p.value.2sided <- 2*pnorm(abs(normal.variate),lower.tail = FALSE)
+results.table2 <- data.frame(parameter,
+                            estimate = round(estimate,3),
+                            st.error = round(st.error,3),
+                            normal.variate = round(normal.variate,2),
+                            p.value = round(p.value.2sided,4))
+results.table2 %>% 
+  kable(digits = 4)
+```
+
+
+#### Figure 4. Goodness-of-fit diagnostic plot with Model 2 for School 7
+
+```{r model2_school7_fit,include=FALSE}
+gof2.triads <- sienaGOF(r2, TriadCensus, varName = "emo_net")
+gof2.indegrees <- sienaGOF(r2, IndegreeDistribution, varName = "emo_net",cumulative = FALSE)
+gof2.outdegrees <- sienaGOF(r2, OutdegreeDistribution, varName = "emo_net",cumulative = FALSE)
+gof2.geodesic <- sienaGOF(r2, GeodesicDistribution, varName = "emo_net",cumulative = FALSE)
+```
+
+```{r model2_school7_fit_plot}
+plot(gof2.indegrees) 
+plot(gof2.outdegrees) 
+plot(gof2.triads,center = TRUE,scale = TRUE)  
+plot(gof2.geodesic)
+```
+
+
+#### Figure 5. Goodness-of-fit diagnostic plot with Model 1 for School 21
+
+```{r model1_school21_fit,include=FALSE}
+## model fit
+gof.triads.1 <- sienaGOF(h1, TriadCensus, varName = "emo_net2")
+gof.indegrees.1 <- sienaGOF(h1, IndegreeDistribution, varName = "emo_net2",cumulative = FALSE)
+gof.outdegrees.1 <- sienaGOF(h1, OutdegreeDistribution, varName = "emo_net2",cumulative = FALSE)
+gof.geodesic.1 <- sienaGOF(h1, GeodesicDistribution, varName = "emo_net2",cumulative = FALSE)
+```
+
+```{r model1_school21_fit_plot}
+plot(gof.indegrees.1) 
+plot(gof.outdegrees.1) 
+plot(gof.triads.1,center = TRUE,scale = TRUE)  
+plot(gof.geodesic.1) 
+```
+
+
+
+#### Table 5. Results of SIENA analysis of School 21 network (Model 2)
+```{r model2_school21,include=FALSE}
+# improve model 1
+n2 <- includeEffects(n1, inPopSqrt, outPopSqrt, outAct, inAct, name = "emo_net2")
+n2 <- includeInteraction(n1, gwespFF, recip)
+
+h2 <- siena07(c2, data = netDynamics2, effects = n2,
+              batch = FALSE,verbose = FALSE,
+              returnDeps = TRUE,
+              prevAns = n1) 
+```
+
+```{r table5}
+parameter <- h2$effects$effectName
+estimate <- h2$theta
+st.error <- sqrt(diag(h2$covtheta))
+normal.variate <- estimate/st.error
+p.value.2sided <- 2*pnorm(abs(normal.variate),lower.tail = FALSE)
+results.table4 <- data.frame(parameter,
+                            estimate = round(estimate,3),
+                            st.error = round(st.error,3),
+                            normal.variate = round(normal.variate,2),
+                            p.value = round(p.value.2sided,4))
+results.table4 %>% 
+  kable(digits = 4)
+```
